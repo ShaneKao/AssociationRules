@@ -1,0 +1,85 @@
+Association Rules
+========================================================
+## Basics of Association Rules
+support$(A \Rightarrow B)$=$P(A \cup B)$
+
+confidence$(A \Rightarrow B)$=$P(A | B)$
+
+lift$(A \Rightarrow B)$=confidence$(A \Rightarrow B)$/$P(B)$
+##  The Titanic Dataset
+The `Titanic` dataset in the *datasets* package is a 4-dimensional table with summarized information
+on the fate of passengers on the Titanic according to social class, sex, age and survival.
+
+```{r}
+str(Titanic)
+(df <- as.data.frame(Titanic))
+```
+
+* 第1列表示 1st class 中的男性孩童死了0人 and so on.
+* 第17列表示 1st class 中的男性孩童存活5人 and so on.
+
+We reconstruct the raw data as `titanic.raw`, where **each row
+represents a person**. 
+
+```{r}
+titanic.raw <- NULL
+for(i in 1:4) {
+titanic.raw <- cbind(titanic.raw, rep(as.character(df[,i]), df$Freq))
+}
+titanic.raw <- as.data.frame(titanic.raw)
+names(titanic.raw) <- names(df)[1:4]
+str(titanic.raw)
+head(titanic.raw)
+summary(titanic.raw)
+```
+
+## Association Rule Mining
+```{r,message=FALSE}
+library(arules)
+rules.all <- apriori(titanic.raw,
+                     control=list(verbose=FALSE), ## 不要 show 過程
+                     parameter = list(minlen=2 , supp=0.005, conf=0.8), ##(the minimal number of items per item set ,  the minimal surpport, the minimal confidence)
+                     appearance = list(rhs=c("Survived=No", "Survived=Yes"),
+                                       default="lhs")) ## (set item for right hand side, the default appearance for all items not explicitly mentioned in the other elements of the list.)
+quality(rules.all) <- round(quality(rules.all), digits=3)
+rules.sorted <- sort(rules.all, by="lift")
+inspect(rules.sorted)
+```
+
+## Removing Redundancy
+
+在有了 rule 1 之後, rule 2 並不能提供更多訊息, we call rule 2 is a super rule of rule 1.
+The following code find and delete all super rule.
+
+```{r}
+subset.matrix <- is.subset(rules.sorted, rules.sorted)
+redundant <- colSums(subset.matrix, na.rm=T) > 1
+which(redundant)
+rules.pruned <- rules.sorted[!redundant]
+inspect(rules.pruned)
+```
+
+## Interpreting Rules
+
+只想知道 `Class` 與 `Age` 與 `survived=Yes`
+的關係
+```{r}
+rules <- apriori(titanic.raw,
+parameter = list(minlen=3, supp=0.002, conf=0.2),
+appearance = list(rhs=c("Survived=Yes"),
+lhs=c("Class=1st", "Class=2nd", "Class=3rd",
+"Age=Child", "Age=Adult"),
+default="none"),
+control = list(verbose=F))
+rules.sorted <- sort(rules, by="confidence")
+inspect(rules.sorted)
+```
+
+* High survival rate for child in 1st class and 2nd class, but not in 3rd class
+* 3rd class has lowest survival rate no matter child or adult.  
+
+## Visualizing Association Rules
+```{r,message=FALSE}
+library(arulesViz)
+plot(rules, method="graph", control=list(type="items"))
+```
